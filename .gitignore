@@ -14,6 +14,9 @@
 !src/
 !src/**
 
+!.github/
+!.github/**
+
 .venv/
 .ruff_cache/
 __pycache__/
