@@ -1,0 +1,26 @@
+*
+!.gitignore
+!.python-version
+!.env.example
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!PolyForm NonCommercial 1.0.0.txt
+!examples/
+!examples/**
+!tests/
+!tests/**
+!src/
+!src/**
+
+.venv/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
