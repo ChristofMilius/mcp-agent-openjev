@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from openjev_router.client import DecisionClient
-from openjev_router.config import Config
+from mcp_agent_openjev.client import DecisionClient
+from mcp_agent_openjev.config import Config
 
 
 def _make_client(**cfg) -> DecisionClient:
@@ -35,7 +35,7 @@ def test_scores_method_on_any_chat_endpoint() -> None:
         ]
     }
     resp.raise_for_status = MagicMock()
-    with patch("openjev_router.client.requests.post", return_value=resp) as mock_post:
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp) as mock_post:
         decision = client.decide_choice(
             state={"ticket": "overcharged"}, candidates=["billing", "tech_support"]
         )
@@ -60,7 +60,7 @@ def test_scores_json_code_fence_stripped() -> None:
         ]
     }
     resp.raise_for_status = MagicMock()
-    with patch("openjev_router.client.requests.post", return_value=resp):
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp):
         decision = client.decide_choice(state={"a": 1}, candidates=["x", "y"])
     assert decision.value == "x"
 
@@ -82,7 +82,7 @@ def test_backend_legacy_hits_completions_endpoint() -> None:
         ]
     }
     resp.raise_for_status = MagicMock()
-    with patch("openjev_router.client.requests.post", return_value=resp) as mock_post:
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp) as mock_post:
         decision = client.decide_choice(state={"q": "x"}, candidates=["a", "b"])
     assert decision.value == "a"
     assert "/completions" in mock_post.call_args.args[0]

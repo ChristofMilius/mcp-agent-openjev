@@ -1,5 +1,5 @@
 [project]
-name = "openjev-router"
+name = "mcp-agent-openjev"
 version = "0.1.0"
 description = "Local typed probabilistic decision service (Choice/Noul/Score) backed by OpenJev + LM Studio logprobs."
 readme = "README.md"
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-openjev-router = "openjev_router:main"
+mcp-agent-openjev = "mcp_agent_openjev:main"
 
 [project.optional-dependencies]
 dev = [
@@ -48,7 +48,7 @@ testpaths = ["tests"]
 addopts = "-p no:cacheprovider"
 
 [tool.coverage.run]
-source = ["openjev_router"]
+source = ["mcp_agent_openjev"]
 
 [tool.coverage.report]
 exclude_lines = [

@@ -1,4 +1,4 @@
-"""openjev-router CLI — one-shot decisions, HTTP service, and MCP server."""
+"""mcp-agent-openjev CLI — one-shot decisions, HTTP service, and MCP server."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import json
 import sys
 from typing import Any
 
-from openjev_router import __version__
-from openjev_router.config import Config
+from mcp_agent_openjev import __version__
+from mcp_agent_openjev.config import Config
 
 
 def _parse_state(raw: str) -> dict[str, Any]:
@@ -28,9 +28,9 @@ def _dump(decision: Any) -> None:
 
 
 def _cmd_doctor(args) -> int:
-    from openjev_router.client import DecisionClient
+    from mcp_agent_openjev.client import DecisionClient
 
-    print(f"openjev-router {__version__} - doctor\n")
+    print(f"mcp-agent-openjev {__version__} - doctor\n")
     try:
         cfg = Config.from_env()
     except Exception as exc:
@@ -62,7 +62,7 @@ def _cmd_doctor(args) -> int:
 
 
 def _cmd_choice(args) -> int:
-    from openjev_router.client import DecisionClient
+    from mcp_agent_openjev.client import DecisionClient
 
     cfg = Config.from_env().with_overrides(
         model=args.model, temperature=args.temperature, abstain_threshold=args.abstain_threshold
@@ -78,7 +78,7 @@ def _cmd_choice(args) -> int:
 
 
 def _cmd_noul(args) -> int:
-    from openjev_router.client import DecisionClient
+    from mcp_agent_openjev.client import DecisionClient
 
     cfg = Config.from_env().with_overrides(model=args.model, temperature=args.temperature)
     decision = DecisionClient(cfg).decide_noul(
@@ -89,7 +89,7 @@ def _cmd_noul(args) -> int:
 
 
 def _cmd_score(args) -> int:
-    from openjev_router.client import DecisionClient
+    from mcp_agent_openjev.client import DecisionClient
 
     cfg = Config.from_env().with_overrides(
         model=args.model, temperature=args.temperature, abstain_threshold=args.abstain_threshold
@@ -105,7 +105,7 @@ def _cmd_score(args) -> int:
 
 
 def _cmd_serve(args) -> int:
-    from openjev_router.mcp_server import run
+    from mcp_agent_openjev.mcp_server import run
 
     transport = "streamable-http" if args.http else "stdio"
     try:
@@ -118,7 +118,7 @@ def _cmd_serve(args) -> int:
 def _cmd_http(args) -> int:
     import uvicorn
 
-    from openjev_router.http_app import create_app
+    from mcp_agent_openjev.http_app import create_app
 
     app = create_app()
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
@@ -149,7 +149,7 @@ def _add_decision_args(parser: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="openjev-router",
+        prog="mcp-agent-openjev",
         description=(
             "Typed probabilistic decisions (Choice/Noul/Score) over OpenJev + a local "
             "OpenAI-compatible chat endpoint."
@@ -204,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as exc:
-        print(f"openjev-router: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"mcp-agent-openjev: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
 

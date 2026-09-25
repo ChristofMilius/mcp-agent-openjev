@@ -1,4 +1,4 @@
-"""Environment-driven configuration for openjev_router."""
+"""Environment-driven configuration for mcp_agent_openjev."""
 
 from __future__ import annotations
 

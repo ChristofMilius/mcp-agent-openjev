@@ -14,7 +14,7 @@ from typing import Any
 
 from openjevpro.harness import BaseDecisionEngine
 
-from openjev_router.client import DecisionClient
+from mcp_agent_openjev.client import DecisionClient
 
 __all__ = ["OpenJevRouterEngine"]
 

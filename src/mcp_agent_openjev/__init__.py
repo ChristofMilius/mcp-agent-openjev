@@ -1,4 +1,4 @@
-"""openjev-router — local typed probabilistic decision service.
+"""mcp-agent-openjev — local typed probabilistic decision service.
 
 Wraps OpenJev (Choice / Noul / Score with calibrated probabilities and
 abstention) behind an OpenAI-compatible chat endpoint — primarily LM Studio's
@@ -12,8 +12,8 @@ __version__ = "0.1.0"
 
 
 def main() -> int:
-    """Console entry point (`openjev-router`). Dispatches to the CLI."""
-    from openjev_router.cli import main as _cli_main
+    """Console entry point (`mcp-agent-openjev`). Dispatches to the CLI."""
+    from mcp_agent_openjev.cli import main as _cli_main
 
     return _cli_main()
 

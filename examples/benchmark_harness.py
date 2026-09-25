@@ -1,4 +1,4 @@
-"""Run OpenJev's benchmark harness against LM Studio via openjev-router.
+"""Run OpenJev's benchmark harness against LM Studio via mcp-agent-openjev.
 
 Reads a small labeled intent-routing dataset, drives every item through
 ``OpenJevProHarness`` (concurrent engine evaluation, resumable checkpoints)
@@ -14,9 +14,9 @@ import json
 
 from openjevpro.harness import OpenJevProHarness
 
-from openjev_router.client import DecisionClient
-from openjev_router.config import Config
-from openjev_router.harness import OpenJevRouterEngine
+from mcp_agent_openjev.client import DecisionClient
+from mcp_agent_openjev.config import Config
+from mcp_agent_openjev.harness import OpenJevRouterEngine
 
 DATASET = [
     {"text": "I was charged twice for my subscription this month", "category": "billing"},

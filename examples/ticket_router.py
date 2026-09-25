@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from openjev_router.client import DecisionClient
-from openjev_router.config import Config
+from mcp_agent_openjev.client import DecisionClient
+from mcp_agent_openjev.config import Config
 
 TICKET_ROUTES = ["billing", "tech_support", "security", "card_lost"]
 

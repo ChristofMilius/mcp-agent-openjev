@@ -28,8 +28,8 @@ import requests
 from openjevpro.calibrator import TemperatureCalibrator
 from openjevpro.client import OpenJevProClient as _StockClient
 
-from openjev_router.config import Config
-from openjev_router.schemas import ChoiceDecision, NoulDecision, ScoreDecision
+from mcp_agent_openjev.config import Config
+from mcp_agent_openjev.schemas import ChoiceDecision, NoulDecision, ScoreDecision
 
 Criteria = str | dict[str, str]
 

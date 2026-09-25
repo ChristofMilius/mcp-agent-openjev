@@ -8,11 +8,11 @@ import requests as _requests
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from openjev_router.client import DecisionClient, DecisionError
-from openjev_router.config import Config
-from openjev_router.schemas import ChoiceDecision, NoulDecision, ScoreDecision
+from mcp_agent_openjev.client import DecisionClient, DecisionError
+from mcp_agent_openjev.config import Config
+from mcp_agent_openjev.schemas import ChoiceDecision, NoulDecision, ScoreDecision
 
-APP_NAME = "openjev-router"
+APP_NAME = "mcp-agent-openjev"
 
 
 class ChoiceRequest(BaseModel):

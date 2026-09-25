@@ -7,10 +7,10 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from openjev_router.client import DecisionClient
-from openjev_router.config import Config
+from mcp_agent_openjev.client import DecisionClient
+from mcp_agent_openjev.config import Config
 
-SERVER_NAME = "openjev-router"
+SERVER_NAME = "mcp-agent-openjev"
 
 INSTRUCTIONS = """\
 Local typed probabilistic decision service backed by OpenJev + logprob calibration.

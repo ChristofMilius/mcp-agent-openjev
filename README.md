@@ -1,4 +1,4 @@
-# openjev-router
+# mcp-agent-openjev
 
 Local **typed probabilistic decision service** — `Choice`, `Noul`, `Score` with
 calibrated probabilities and abstention — powered by
@@ -49,22 +49,22 @@ do not burn the single-token budget in thinking output.
 ### One-shot CLI
 
 ```powershell
-uv run openjev-router doctor
+uv run mcp-agent-openjev doctor
 
-uv run openjev-router choice "unauthorized login from an unknown IP" `
+uv run mcp-agent-openjev choice "unauthorized login from an unknown IP" `
     -c billing -c tech_support -c security `
     --criteria "pick the handling department"
 
-uv run openjev-router noul "the request is urgent" "this is a support request"
+uv run mcp-agent-openjev noul "the request is urgent" "this is a support request"
 
-uv run openjev-router score "PII exposed in a public bucket for 3 days" `
+uv run mcp-agent-openjev score "PII exposed in a public bucket for 3 days" `
     -t low -t medium -t high -t critical
 ```
 
 ### HTTP service
 
 ```powershell
-uv run openjev-router http --host 127.0.0.1 --port 8377
+uv run mcp-agent-openjev http --host 127.0.0.1 --port 8377
 curl http://localhost:8377/health
 curl -X POST http://localhost:8377/v1/decide/choice -H "Content-Type: application/json" -d '{
   "state": {"ticket": "unauthorized login from an unknown IP"},
@@ -80,17 +80,17 @@ Endpoints: `POST /v1/decide/choice`, `POST /v1/decide/noul`,
 ### MCP server
 
 ```powershell
-uv run openjev-router serve              # stdio (default)
-uv run openjev-router serve --http       # streamable-http on :8030
+uv run mcp-agent-openjev serve              # stdio (default)
+uv run mcp-agent-openjev serve --http       # streamable-http on :8030
 ```
 
 Tools: `decide_choice`, `decide_noul`, `decide_score`, `decision_status`.
 Wire it into opencode's MCP block:
 
 ```jsonc
-"openjev-router": {
+"mcp-agent-openjev": {
   "type": "local",
-   "command": ["uv", "run", "--directory", "<path-to-mcp_agent_openjev>", "openjev-router", "serve"],
+   "command": ["uv", "--project", "<path-to-mcp_agent_openjev>", "run", "python", "-m", "mcp_agent_openjev", "serve"],
   "environment": {}
 }
 ```
