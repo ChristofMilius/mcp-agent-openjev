@@ -27,6 +27,7 @@ from typing import Any
 import requests
 from openjevpro.calibrator import TemperatureCalibrator
 from openjevpro.client import OpenJevProClient as _StockClient
+from openjevpro.schemas import ChoiceDecision as _OpenJevChoiceDecision
 
 from mcp_agent_openjev.config import Config
 from mcp_agent_openjev.schemas import ChoiceDecision, NoulDecision, ScoreDecision
@@ -84,6 +85,16 @@ def _effective_threshold(n_options: int, configured: float | str) -> float:
     if configured == "auto":
         return 1.25 / max(n_options, 1)
     return float(configured)
+
+
+def _constructor_threshold(configured: float | str) -> float:
+    """Placeholder threshold for a stock client, replaced per call when it is `auto`.
+
+    openjevpro's threshold is typed `float` and compared against a confidence
+    value, so a str would raise. `decide_choice` recomputes the real value once
+    the candidate count is known.
+    """
+    return float(configured) if configured != "auto" else 0.45
 
 
 class _ChatCompleter:
@@ -156,7 +167,7 @@ class DecisionClient:
                 api_key=config.api_key,
                 model=config.model,
                 temperature_scaling=config.temperature,
-                abstain_threshold=config.threshold,
+                abstain_threshold=_constructor_threshold(config.threshold),
                 backend=self.backend,
             )
 
@@ -170,17 +181,27 @@ class DecisionClient:
         allow_abstain: bool = True,
     ) -> ChoiceDecision:
         """Multi-class categorical decision with calibrated probabilities."""
-        if self._legacy is not None:
-            return self._legacy.decide_choice(
-                state=state,
-                candidates=candidates,
-                criteria=criteria,
-                allow_abstain=allow_abstain,
-            )
-
         options = _normalize_options(candidates)
         if allow_abstain and "UNKNOWN" not in options:
             options.append("UNKNOWN")
+
+        if self._legacy is not None:
+            # openjevpro compares `confidence < abstain_threshold`, so it needs a
+            # concrete float. `auto` is a supported JEV_ABSTAIN_THRESHOLD value and
+            # would otherwise reach that comparison as a str and raise TypeError.
+            if self._legacy.abstain_threshold != self.config.threshold:
+                self._legacy.abstain_threshold = _effective_threshold(
+                    len(options), self.config.threshold
+                )
+            return self._from_legacy(
+                self._legacy.decide_choice(
+                    state=state,
+                    candidates=options[:-1] if options[-1] == "UNKNOWN" else options,
+                    criteria=criteria,
+                    allow_abstain=allow_abstain,
+                )
+            )
+
         logits = self._score_options(state, options, criteria)
         return self._to_choice(logits, options, allow_abstain)
 
@@ -342,7 +363,7 @@ class DecisionClient:
         self, logits: dict[str, float], options: list[str], allow_abstain: bool
     ) -> ChoiceDecision:
         probabilities = self.calibrator.calibrate(logits)
-        best = max(probabilities, key=probabilities.get)
+        best = max(probabilities, key=lambda option: probabilities[option])
         confidence = probabilities[best]
         effective_threshold = _effective_threshold(len(options), self.config.threshold)
         abstained = (allow_abstain and best == "UNKNOWN") or confidence < effective_threshold
@@ -355,6 +376,33 @@ class DecisionClient:
             abstained=abstained,
             tentative_value=tentative,
             raw_logits=logits,
+        )
+
+    @staticmethod
+    def _from_legacy(decision: _OpenJevChoiceDecision) -> ChoiceDecision:
+        """Re-wrap a stock-client decision so this package's schema contract holds.
+
+        The stock openjevpro client returns its own `ChoiceDecision`, which has no
+        `tentative_value`. Passing it through untouched would make the abstention
+        contract — and the shape of the serialized decision — depend on which
+        backend is configured, so the ollama/legacy paths would silently drop a
+        field the chat path always reports.
+        """
+        probabilities = decision.probabilities
+        raw_argmax = max(probabilities, key=lambda option: probabilities[option], default=None)
+        value, tentative = decision.value, None
+        if decision.abstained:
+            if value != "UNKNOWN":
+                tentative, value = value, "UNKNOWN"
+            elif raw_argmax not in (None, "UNKNOWN"):
+                tentative = raw_argmax
+        return ChoiceDecision(
+            value=value,
+            probabilities=probabilities,
+            confidence=decision.confidence,
+            abstained=decision.abstained,
+            tentative_value=tentative,
+            raw_logits=decision.raw_logits,
         )
 
     @property

@@ -6,9 +6,12 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from openjevpro.client import OpenJevProClient
+from openjevpro.schemas import ChoiceDecision as UpstreamChoice
 
 from mcp_agent_openjev.client import DecisionClient, InvalidTierError
 from mcp_agent_openjev.config import Config
+from mcp_agent_openjev.schemas import ChoiceDecision
 
 
 def _make_client(**cfg) -> DecisionClient:
@@ -79,6 +82,76 @@ def test_scores_json_code_fence_stripped() -> None:
 def test_backend_ollama_reuses_stock_client() -> None:
     client = _make_client(base_url="http://localhost:11434", backend="ollama")
     assert client._legacy is not None
+
+
+# -- legacy backend contract -------------------------------------------------
+# The stock client returns openjevpro's own ChoiceDecision, which has no
+# tentative_value. Passing it through untouched made the serialized decision
+# depend on the configured backend, and handed it a str threshold when
+# JEV_ABSTAIN_THRESHOLD=auto, which raises TypeError inside openjevpro's
+# `confidence < abstain_threshold` comparison.
+
+
+def _upstream(**overrides) -> UpstreamChoice:
+    base = {
+        "value": "a",
+        "probabilities": {"a": 0.8, "UNKNOWN": 0.2},
+        "confidence": 0.8,
+        "abstained": False,
+    }
+    return UpstreamChoice(**{**base, **overrides})
+
+
+def _legacy_client(**cfg) -> tuple[DecisionClient, OpenJevProClient]:
+    client = _make_client(base_url="http://localhost:11434", backend="ollama", **cfg)
+    legacy = client._legacy
+    assert legacy is not None
+    return client, legacy
+
+
+def test_legacy_decision_rewrapped_with_tentative_value() -> None:
+    client, legacy = _legacy_client()
+    upstream = _upstream(
+        value="billing",
+        probabilities={"billing": 0.62, "security": 0.37, "UNKNOWN": 0.01},
+        confidence=0.62,
+    )
+    with patch.object(legacy, "decide_choice", return_value=upstream):
+        decision = client.decide_choice(state={"t": "x"}, candidates=["billing", "security"])
+    assert isinstance(decision, ChoiceDecision)
+    assert "tentative_value" in decision.model_dump()
+    assert decision.tentative_value is None
+
+
+def test_legacy_abstention_normalizes_value_and_keeps_tentative() -> None:
+    client, legacy = _legacy_client()
+    upstream = _upstream(
+        value="billing",
+        probabilities={"billing": 0.30, "security": 0.28, "UNKNOWN": 0.42},
+        confidence=0.30,
+        abstained=True,
+    )
+    with patch.object(legacy, "decide_choice", return_value=upstream):
+        decision = client.decide_choice(state={"t": "x"}, candidates=["billing", "security"])
+    assert decision.abstained
+    assert decision.value == "UNKNOWN"
+    assert decision.tentative_value == "billing"
+
+
+def test_legacy_auto_threshold_resolved_to_float() -> None:
+    client, legacy = _legacy_client(abstain_threshold="auto")
+    with patch.object(legacy, "decide_choice", return_value=_upstream()):
+        client.decide_choice(state={"t": "x"}, candidates=["a", "b", "c"])
+    resolved = legacy.abstain_threshold
+    assert isinstance(resolved, float)
+    assert resolved == pytest.approx(1.25 / 4)  # 3 candidates + UNKNOWN
+
+
+def test_legacy_configured_threshold_left_alone() -> None:
+    client, legacy = _legacy_client(abstain_threshold=0.7)
+    with patch.object(legacy, "decide_choice", return_value=_upstream()):
+        client.decide_choice(state={"t": "x"}, candidates=["a", "b", "c"])
+    assert legacy.abstain_threshold == pytest.approx(0.7)
 
 
 def test_backend_legacy_hits_completions_endpoint() -> None:
