@@ -46,6 +46,27 @@ class TooManyOptionsError(DecisionError):
     """More than 26 candidates cannot be expressed as single letter tokens."""
 
 
+class InvalidTierError(DecisionError, ValueError):
+    """A score tier is malformed: missing label, duplicate label, or foreign weight."""
+
+
+def _tier_weight(raw: Any, index: int) -> float:
+    """Validate an explicit tier weight against the tier's ordinal position."""
+    try:
+        weight = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise InvalidTierError(
+            f"tier score must be a number, got {raw!r} at position {index}"
+        ) from exc
+    if weight != float(index):
+        raise InvalidTierError(
+            f"tier score {weight} does not match the tier's position {index}. The weight of "
+            "a tier is its ordinal position, so 'expected_score' stays an expected tier "
+            "index. Omit 'score' to use the position, or reorder the tiers."
+        )
+    return weight
+
+
 def _criteria_text(criteria: Criteria) -> str:
     if isinstance(criteria, dict):
         return "\n".join(f"- {k}: {v}" for k, v in criteria.items())
@@ -188,15 +209,36 @@ class DecisionClient:
         criteria: Criteria = "",
         allow_abstain: bool = True,
     ) -> ScoreDecision:
-        """Ordinal evaluation: probability mass across tiers + expected score."""
+        """Ordinal evaluation: probability mass across tiers + expected score.
+
+        A tier is either a plain label string, or a dict carrying `label` (or
+        `value`) plus an optional `score`. The weight of a tier is its ordinal
+        position, so an explicit `score` must equal that position: a custom
+        weight would make `expected_score` a weighted expectation over an
+        arbitrary scale rather than the expected tier index, which is what
+        `decide_score` promises and what its callers compare against.
+        """
         labels: list[str] = []
         scores: dict[str, float] = {}
         for index, tier in enumerate(tiers):
             if isinstance(tier, dict):
-                label = str(tier.get("label") or tier.get("value") or index)
-                weight = float(tier.get("score", index))
+                label = tier.get("label") or tier.get("value")
+                if label is None:
+                    raise InvalidTierError(
+                        f"tier at position {index} is a dict without 'label' or 'value': "
+                        f"{tier!r}. Accepted shapes: a label string, or a dict with "
+                        "'label' (or 'value') and an optional 'score' equal to the "
+                        "tier's position. Note that '{\"$text\": ...}' is not a tier."
+                    )
+                label = str(label)
+                weight = _tier_weight(tier.get("score", index), index)
             else:
                 label, weight = str(tier), float(index)
+            if label in scores:
+                raise InvalidTierError(
+                    f"duplicate tier label {label!r} at position {index}. Tier labels must "
+                    "be unique: they key the probability mass and the expected score."
+                )
             labels.append(label)
             scores[label] = weight
 
@@ -320,4 +362,10 @@ class DecisionClient:
         return completer
 
 
-__all__ = ["DecisionClient", "DecisionError", "NoLogprobsError", "TooManyOptionsError"]
+__all__ = [
+    "DecisionClient",
+    "DecisionError",
+    "InvalidTierError",
+    "NoLogprobsError",
+    "TooManyOptionsError",
+]

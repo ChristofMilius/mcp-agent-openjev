@@ -61,6 +61,28 @@ uv run mcp-agent-openjev score "PII exposed in a public bucket for 3 days" `
     -t low -t medium -t high -t critical
 ```
 
+#### Score tiers
+
+A tier is either a label string or a dict with `label` (or `value`) and an
+optional `score`:
+
+```jsonc
+// plain labels - weight is the position in the list
+["low", "medium", "high", "critical"]
+
+// explicit form - 'score' must equal the tier's position
+[{"label": "low", "score": 0}, {"label": "critical", "score": 3}]
+```
+
+`score` must match the tier's position because a tier's weight *is* its ordinal
+position - that is what makes `expected_score` an expected tier index, which is
+what callers compare against. A tier dict without `label`/`value`, a
+duplicate label, or a `score` that disagrees with the position is rejected
+(`InvalidTierError`, HTTP 400 on the service) rather than silently degraded to
+a positional label - a degraded tier is rendered into the prompt as `0. 0`, so
+the model ends up ranking meaningless numbers. `level_probabilities` is always
+keyed by tier label.
+
 ### HTTP service
 
 ```powershell

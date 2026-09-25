@@ -114,9 +114,10 @@ def create_server(config: Config | None = None) -> MCPServer:
     ) -> str:
         """Rate the state across ordered tiers (e.g. severity levels).
 
-        tiers: ordered list of strings, or dicts with 'label'/'value' and an optional
-        'score' weight. Returns ScoreDecision JSON with expected_score and per-tier
-        probability mass.
+        tiers: ordered list of label strings, or dicts with 'label' (or 'value') and an
+        optional 'score' equal to the tier's position in the list. Malformed tiers raise
+        instead of degrading silently. Returns ScoreDecision JSON with expected_score and
+        level_probabilities keyed by tier label.
         """
         try:
             decision = client.decide_score(

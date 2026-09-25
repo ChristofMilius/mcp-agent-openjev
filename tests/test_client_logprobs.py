@@ -181,12 +181,12 @@ def test_score_with_explicit_weights() -> None:
         decision = client.decide_score(
             state={"desc": "printer"},
             tiers=[
-                {"label": "low", "score": 1},
-                {"label": "high", "score": 10},
-                {"label": "critical", "score": 100},
+                {"label": "low", "score": 0},
+                {"label": "high", "score": 1},
+                {"label": "critical", "score": 2},
             ],
         )
-    assert decision.expected_score == pytest.approx(1.0, abs=0.05)
+    assert decision.expected_score == pytest.approx(0.0, abs=0.05)
     assert decision.level_probabilities["low"] > 0.9
 
 

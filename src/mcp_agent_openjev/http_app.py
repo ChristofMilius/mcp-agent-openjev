@@ -36,7 +36,12 @@ class NoulRequest(BaseModel):
 class ScoreRequest(BaseModel):
     state: dict[str, Any]
     tiers: list[str | dict[str, Any]] = Field(
-        min_length=1, description="Ordered tiers, optionally with explicit scores"
+        min_length=1,
+        description=(
+            "Ordered tiers: label strings, or dicts with 'label' (or 'value') and an "
+            "optional 'score' equal to the tier's position. Malformed tiers are rejected "
+            "with 400."
+        ),
     )
     criteria: str | dict[str, str] = ""
     allow_abstain: bool = True
