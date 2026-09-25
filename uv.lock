@@ -575,6 +575,44 @@ cli = [
 ]
 
 [[package]]
+name = "mcp-agent-openjev"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "mcp", extra = ["cli"] },
+    { name = "openjevpro" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.0" },
+    { name = "mcp", extras = ["cli"], specifier = ">=2.0.0" },
+    { name = "openjevpro", specifier = ">=0.1.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "requests", specifier = ">=2.31.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.10.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "mcp-types"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -657,44 +695,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6c/b0/ff5658a58199b7bcaad87bf260eef6713d9d42cca4e028f935b4fc5fbac6/numpy-2.5.3-cp315-cp315t-win_amd64.whl", hash = "sha256:1aad64d99730d013cfc6debafed22783b4fc5a7f4b8bc744d2d8cf7dcc880551", size = 12884918, upload-time = "2026-09-06T16:27:40.965Z" },
     { url = "https://files.pythonhosted.org/packages/fb/0b/b12a2df5d1b774bd9007a6fdff9381145b6223d37f11afc9c37ab0efd9a1/numpy-2.5.3-cp315-cp315t-win_arm64.whl", hash = "sha256:befa1ae5bd6030b3f512b43ff3fa5290bbed6b84411a44244b14adf835f5b89d", size = 10850807, upload-time = "2026-09-06T16:27:43.868Z" },
 ]
-
-[[package]]
-name = "mcp-agent-openjev"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "mcp", extra = ["cli"] },
-    { name = "openjevpro" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "uvicorn" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.0" },
-    { name = "mcp", extras = ["cli"], specifier = ">=2.0.0" },
-    { name = "openjevpro", specifier = ">=0.1.0" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "requests", specifier = ">=2.31.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.10.0" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "openjevpro"

@@ -1,6 +1,6 @@
 [project]
 name = "mcp-agent-openjev"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local typed probabilistic decision service (Choice/Noul/Score) backed by OpenJev + LM Studio logprobs."
 readme = "README.md"
 authors = [
