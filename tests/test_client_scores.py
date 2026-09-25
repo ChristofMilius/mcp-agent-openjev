@@ -183,3 +183,44 @@ def test_expected_score_uses_ordinal_positions() -> None:
     probs = decision.level_probabilities
     expected = probs["low"] * 0 + probs["medium"] * 1 + probs["high"] * 2
     assert decision.expected_score == pytest.approx(expected)
+
+
+# -- echoed scale ---------------------------------------------------------
+
+
+def test_tier_weights_echo_the_scale() -> None:
+    client = _make_client(method="scores")
+    resp = _scores_response({"low": 0.0, "high": 5.0, "UNKNOWN": 0.0})
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp):
+        decision = client.decide_score(
+            state={"a": 1}, tiers=[{"label": "low", "score": 0}, {"label": "high", "score": 1}]
+        )
+    assert decision.tier_weights == {"low": 0.0, "high": 1.0, "UNKNOWN": 0.0}
+
+
+def test_tier_weights_ordered_by_tier() -> None:
+    client = _make_client(method="scores")
+    resp = _scores_response({"low": 1.0, "medium": 1.0, "high": 1.0, "UNKNOWN": 0.0})
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp):
+        decision = client.decide_score(state={"a": 1}, tiers=["low", "medium", "high"])
+    assert list(decision.tier_weights) == ["low", "medium", "high", "UNKNOWN"]
+
+
+def test_expected_score_recomputable_from_echoed_scale() -> None:
+    client = _make_client(method="scores")
+    resp = _scores_response({"low": 0.0, "medium": 5.0, "high": 0.0, "UNKNOWN": 0.0})
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp):
+        decision = client.decide_score(state={"a": 1}, tiers=["low", "medium", "high"])
+    recomputed = sum(
+        p * decision.tier_weights[label] for label, p in decision.level_probabilities.items()
+    )
+    assert decision.expected_score == pytest.approx(recomputed)
+
+
+def test_tier_weights_absent_without_abstention() -> None:
+    client = _make_client(method="scores")
+    resp = _scores_response({"low": 1.0, "high": 1.0})
+    with patch("mcp_agent_openjev.client.requests.post", return_value=resp):
+        decision = client.decide_score(state={"a": 1}, tiers=["low", "high"], allow_abstain=False)
+    assert "UNKNOWN" not in decision.tier_weights
+    assert decision.tier_weights == {"low": 0.0, "high": 1.0}

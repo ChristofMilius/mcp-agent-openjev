@@ -116,8 +116,8 @@ def create_server(config: Config | None = None) -> MCPServer:
 
         tiers: ordered list of label strings, or dicts with 'label' (or 'value') and an
         optional 'score' equal to the tier's position in the list. Malformed tiers raise
-        instead of degrading silently. Returns ScoreDecision JSON with expected_score and
-        level_probabilities keyed by tier label.
+        instead of degrading silently. Returns ScoreDecision JSON with expected_score,
+        level_probabilities keyed by tier label, and tier_weights echoing the scale.
         """
         try:
             decision = client.decide_score(

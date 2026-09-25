@@ -83,6 +83,23 @@ a positional label - a degraded tier is rendered into the prompt as `0. 0`, so
 the model ends up ranking meaningless numbers. `level_probabilities` is always
 keyed by tier label.
 
+The response also echoes the scale it used, so the score never has to be read
+against an assumed convention:
+
+```jsonc
+{
+  "expected_score": 2.2056,
+  "level_probabilities": {"low": 0.00005, "high": 0.783, "critical": 0.211, "UNKNOWN": 0.0002},
+  "tier_weights": {"low": 0.0, "high": 2.0, "critical": 3.0, "UNKNOWN": 0.0},
+  "confidence": 0.783,
+  "abstained": false
+}
+```
+
+`tier_weights` is ordered by tier, and includes `UNKNOWN` (weight `0.0`) when
+abstention is enabled, so `expected_score` can be recomputed from
+`level_probabilities` alone.
+
 ### HTTP service
 
 ```powershell

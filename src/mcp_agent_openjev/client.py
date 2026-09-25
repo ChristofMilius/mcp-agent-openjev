@@ -217,6 +217,9 @@ class DecisionClient:
         weight would make `expected_score` a weighted expectation over an
         arbitrary scale rather than the expected tier index, which is what
         `decide_score` promises and what its callers compare against.
+
+        The resulting `tier_weights` echoes the scale, so `expected_score` never
+        has to be read against an assumed convention.
         """
         labels: list[str] = []
         scores: dict[str, float] = {}
@@ -252,6 +255,7 @@ class DecisionClient:
         return ScoreDecision(
             expected_score=expected,
             level_probabilities=decision.probabilities,
+            tier_weights=weight,
             confidence=decision.confidence,
             abstained=decision.abstained,
         )
