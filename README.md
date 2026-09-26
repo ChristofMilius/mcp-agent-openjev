@@ -169,6 +169,14 @@ The released helper's `READOUT_T`, `READOUT_NOUL_T`, `READOUT_NOUL_BIAS` and
 
 ## License
 
-MIT (see `LICENSE`). The OpenJev model weights are **CC BY-NC 4.0**
-(non-commercial); the `openjev-server` code this calibration mirrors is
-Apache 2.0.
+The adapter, service, CLI and MCP surface in this repository are **MIT** (see
+`LICENSE`). Two upstream licenses are carried alongside because the calibration
+mirrors their code and model:
+
+- **`LICENSE-APACHE-2.0.txt`** — Apache 2.0. Covers the `openjev-server` code
+  this calibration mirrors (`helper/`, `serve/`) and OpenJev's Apache-2.0 open
+  base model, as requested by the [OpenJev model repo](https://huggingface.co/openjev/openjev).
+- **CC BY-NC 4.0** — the OpenJev *weights*. Free for research and other
+  non-commercial use with attribution; commercial use requires a separate
+  licence (open a discussion on the model repo). The terms travel with the
+  GGUF, so they apply however the model is served.

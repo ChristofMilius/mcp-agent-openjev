@@ -6,6 +6,7 @@
 !uv.lock
 !README.md
 !LICENSE
+!LICENSE-APACHE-2.0.txt
 !examples/
 !examples/**
 !tests/
