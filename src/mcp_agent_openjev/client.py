@@ -1,35 +1,29 @@
-"""Typed probabilistic decision client backed by OpenJev.
+"""Typed probabilistic decision client backed by OpenJev over Bionic (LM Studio).
 
-Two layers:
+The readout is OpenJev's: one score per option letter at the first output position of a single-token completion, then a
+temperature-scaled softmax. The transport is Bionic's `/v1/responses` endpoint -- the one LM Studio surface that returns
+logprobs (`/v1/completions` and `/v1/chat/completions` return `logprobs: null` and cap `top_logprobs` at 20).
 
-* ``DecisionClient`` — the public surface. ``decide_choice`` / ``decide_noul`` /
-  ``decide_score`` return OpenJev's pydantic decision schemas with temperature
-  calibrated probabilities and abstention.
-
-* Wire backends — ``chat`` (our logprobs/scores path over
-  ``/v1/chat/completions``, the only endpoint LM Studio exports) and the two
-  stock openjevpro backends (``ollama`` via ``/api/chat``, ``legacy`` via
-  ``/v1/completions``).
-
-The chat backend is the reason this project exists: OpenJev's built-in clients
-target Ollama and the legacy completions endpoint, neither of which LM Studio
-serves. The letter-scoring algorithm is preserved, only the wire protocol is
-changed to return ``choices[0].logprobs.content``.
+The calibration constants are the released helper's: ``temp 0.85, noul_t 1.829074, noul_bias 0.0, perms 1``.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from enum import Enum
 from typing import Any
 
-import requests
-from openjevpro.calibrator import TemperatureCalibrator
-from openjevpro.client import OpenJevProClient as _StockClient
-from openjevpro.schemas import ChoiceDecision as _OpenJevChoiceDecision
-
+from mcp_agent_openjev.bionic import BionicClient, BionicError
 from mcp_agent_openjev.config import Config
+from mcp_agent_openjev.openjev import (
+    LETTERS,
+    OpenJevReadoutError,
+    build_prompt,
+    choice_confidence,
+    letter_scores,
+    score_confidence,
+    softmax,
+)
 from mcp_agent_openjev.schemas import ChoiceDecision, NoulDecision, ScoreDecision
 
 Criteria = str | dict[str, str]
@@ -39,12 +33,8 @@ class DecisionError(Exception):
     """Base error for decision failures, carrying a user-facing message."""
 
 
-class NoLogprobsError(DecisionError):
-    """The backend answered without `logprobs.content`, so calibration is impossible."""
-
-
 class TooManyOptionsError(DecisionError):
-    """More than 26 candidates cannot be expressed as single letter tokens."""
+    """More than 52 candidates cannot be expressed as single letter tokens."""
 
 
 class InvalidTierError(DecisionError, ValueError):
@@ -68,12 +58,6 @@ def _tier_weight(raw: Any, index: int) -> float:
     return weight
 
 
-def _criteria_text(criteria: Criteria) -> str:
-    if isinstance(criteria, dict):
-        return "\n".join(f"- {k}: {v}" for k, v in criteria.items())
-    return str(criteria).strip()
-
-
 def _normalize_options(candidates: type[Enum] | list[str]) -> list[str]:
     if isinstance(candidates, type) and issubclass(candidates, Enum):
         return [e.value for e in candidates]
@@ -81,95 +65,24 @@ def _normalize_options(candidates: type[Enum] | list[str]) -> list[str]:
 
 
 def _effective_threshold(n_options: int, configured: float | str) -> float:
-    """Auto threshold scales inversely with candidate count (1.25 / N)."""
+    """Auto threshold scales inversely with candidate count (1.25 / N).
+
+    TODO: this was fitted against gemma logprobs and is wrong for OpenJev's properly
+    calibrated output. Re-fit on real tiebreak cases (see Phase 4).
+    """
     if configured == "auto":
         return 1.25 / max(n_options, 1)
     return float(configured)
 
 
-def _constructor_threshold(configured: float | str) -> float:
-    """Placeholder threshold for a stock client, replaced per call when it is `auto`.
-
-    openjevpro's threshold is typed `float` and compared against a confidence
-    value, so a str would raise. `decide_choice` recomputes the real value once
-    the candidate count is known.
-    """
-    return float(configured) if configured != "auto" else 0.45
-
-
-class _ChatCompleter:
-    """Thin POST wrapper over an OpenAI-compatible chat completions endpoint."""
-
-    def __init__(self, config: Config):
-        self.config = config
-        self._headers = {"Content-Type": "application/json"}
-        if config.api_key:
-            self._headers["Authorization"] = f"Bearer {config.api_key}"
-
-    def _payload(
-        self, content: str, *, max_tokens: int, temperature: float, logprobs: bool
-    ) -> dict:
-        payload: dict[str, Any] = {
-            "model": self.config.model,
-            "messages": [{"role": "user", "content": content}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }
-        if logprobs:
-            payload["logprobs"] = True
-            payload["top_logprobs"] = self.config.top_logprobs
-        if self.config.disable_reasoning:
-            payload["reasoning_effort"] = "none"
-        return payload
-
-    def complete(
-        self, content: str, *, max_tokens: int, temperature: float, logprobs: bool
-    ) -> dict:
-        resp = requests.post(
-            self.config.decisions_url,
-            headers=self._headers,
-            json=self._payload(
-                content, max_tokens=max_tokens, temperature=temperature, logprobs=logprobs
-            ),
-            timeout=self.config.timeout,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-def _strip_code_fence(content: str) -> str:
-    if "```" not in content:
-        return content.strip()
-    for part in content.split("```"):
-        block = part.strip()
-        if block.startswith("json"):
-            block = block[4:].strip()
-        if block.startswith("{") and block.endswith("}"):
-            return block
-    return content.strip()
-
-
 class DecisionClient:
-    """Calibrated typed decision client over a configurable backend."""
+    """Calibrated typed decision client over Bionic's Open Responses endpoint."""
 
     def __init__(self, config: Config):
         if config.temperature <= 0:
             raise ValueError("Temperature must be positive.")
         self.config = config
-        self.backend = config.resolve_backend()
-        self.calibrator = TemperatureCalibrator(temperature=config.temperature)
-        self._legacy: _StockClient | None = None
-
-        if self.backend in ("ollama", "legacy"):
-            self._legacy = _StockClient(
-                base_url=config.base_url,
-                api_key=config.api_key,
-                model=config.model,
-                temperature_scaling=config.temperature,
-                abstain_threshold=_constructor_threshold(config.threshold),
-                backend=self.backend,
-            )
+        self.client = BionicClient(config)
 
     # -- public surface ----------------------------------------------------
 
@@ -182,28 +95,14 @@ class DecisionClient:
     ) -> ChoiceDecision:
         """Multi-class categorical decision with calibrated probabilities."""
         options = _normalize_options(candidates)
-        if allow_abstain and "UNKNOWN" not in options:
-            options.append("UNKNOWN")
-
-        if self._legacy is not None:
-            # openjevpro compares `confidence < abstain_threshold`, so it needs a
-            # concrete float. `auto` is a supported JEV_ABSTAIN_THRESHOLD value and
-            # would otherwise reach that comparison as a str and raise TypeError.
-            if self._legacy.abstain_threshold != self.config.threshold:
-                self._legacy.abstain_threshold = _effective_threshold(
-                    len(options), self.config.threshold
-                )
-            return self._from_legacy(
-                self._legacy.decide_choice(
-                    state=state,
-                    candidates=options[:-1] if options[-1] == "UNKNOWN" else options,
-                    criteria=criteria,
-                    allow_abstain=allow_abstain,
-                )
+        if len(options) > len(LETTERS):
+            raise TooManyOptionsError(
+                f"{len(options)} candidates exceed the {len(LETTERS)} single-letter token limit; "
+                "split the decision into a hierarchy."
             )
 
-        logits = self._score_options(state, options, criteria)
-        return self._to_choice(logits, options, allow_abstain)
+        probs, raw, _ = self._readout(state, _criteria_text(criteria), options)
+        return self._to_choice(probs, options, allow_abstain, raw)
 
     def decide_noul(self, state: dict[str, Any], assertion: str) -> NoulDecision:
         """Binary truth judgment: is the assertion TRUE or FALSE for the state?"""
@@ -277,147 +176,91 @@ class DecisionClient:
             expected_score=expected,
             level_probabilities=decision.probabilities,
             tier_weights=weight,
-            confidence=decision.confidence,
+            confidence=score_confidence(list(decision.probabilities.values())),
             abstained=decision.abstained,
         )
 
-    # -- chat-backend scoring ----------------------------------------------
+    # -- readout -----------------------------------------------------------
 
-    def _score_options(
-        self, state: dict[str, Any], options: list[str], criteria: Criteria
-    ) -> dict[str, float]:
-        if len(options) > 26:
-            raise TooManyOptionsError(
-                f"{len(options)} candidates exceed the 26 single-letter token limit; "
-                "split the decision into a hierarchy or drop allow_abstain."
-            )
-        letters = [chr(65 + i) for i in range(len(options))]
-        letter_to_option = dict(zip(letters, options))
-        prompt = self._build_letter_prompt(state, options, criteria)
+    def _readout(
+        self, state: dict[str, Any], instructions: str, options: list[str]
+    ) -> tuple[list[float], dict[str, float], int]:
+        """Temperature-scaled probabilities aligned with `options`, plus the raw letter logits.
 
-        if self.config.method in ("auto", "logprobs"):
-            try:
-                return self._score_logprobs(prompt, letter_to_option)
-            except NoLogprobsError:
-                if self.config.method == "logprobs":
-                    raise
-            except requests.HTTPError:
-                if self.config.method == "logprobs":
-                    raise
-        return self._score_json(prompt, options)
+        Averages over `config.perms` letterings (option orders) when perms > 1.
+        """
+        if self.config.perms <= 1:
+            raw, tokens = self._readout_once(state, instructions, options)
+            probs = softmax([v / self.config.temperature for v in raw])
+            return probs, dict(zip(options, raw, strict=True)), tokens
 
-    def _build_letter_prompt(
-        self, state: dict[str, Any], options: list[str], criteria: Criteria
-    ) -> str:
-        lines = [f"{chr(65 + i)}. {opt}" for i, opt in enumerate(options)]
-        return (
-            f"Given the following state:\n{json.dumps(state, ensure_ascii=False, indent=2)}\n\n"
-            f"Evaluation criteria:\n{_criteria_text(criteria)}\n\n"
-            f"Select the single best option from the list below:\n" + "\n".join(lines) + "\n\n"
-            "Reply with ONLY the option letter (e.g. A, B, C):"
-        )
+        import random
 
-    def _score_logprobs(self, prompt: str, letter_to_option: dict[str, str]) -> dict[str, float]:
-        data = self._chat.complete(prompt, max_tokens=1, temperature=0.0, logprobs=True)
-        choice = data["choices"][0]
-        content = (choice.get("message") or {}).get("content") or ""
-        if not content:
-            raise NoLogprobsError(
-                "backend returned an empty message (reasoning may have consumed the token budget); "
-                "set JEV_DISABLE_REASONING=1 or use method=scores."
-            )
-        logprob_block = (choice.get("logprobs") or {}).get("content") or []
-        if not logprob_block:
-            raise NoLogprobsError("backend returned no logprobs.content for the completion.")
-        token_probs = {
-            entry.get("token"): float(entry.get("logprob", -100.0))
-            for entry in (logprob_block[0].get("top_logprobs") or [])
-        }
-        logits: dict[str, float] = {}
-        for letter, option in letter_to_option.items():
-            for attempt in (letter, f" {letter}", letter.lower(), f" {letter.lower()}"):
-                if attempt in token_probs:
-                    logits[option] = token_probs[attempt]
-                    break
-            else:
-                logits[option] = -100.0
-        return logits
+        orders = []
+        for j in range(self.config.perms):
+            order = list(range(len(options)))
+            random.Random(j).shuffle(order)
+            orders.append(order)
+        acc = [0.0] * len(options)
+        tokens = 0
+        for order in orders:
+            shuffled = [options[i] for i in order]
+            raw, t = self._readout_once(state, instructions, shuffled)
+            tokens += t
+            p = softmax([v / self.config.temperature for v in raw])
+            for pos, i in enumerate(order):
+                acc[i] += p[pos] / self.config.perms
+        return acc, {}, tokens
 
-    def _score_json(self, prompt: str, options: list[str]) -> dict[str, float]:
-        schema = json.dumps({opt: 0.0 for opt in options})
-        content = (
-            f"{prompt}\n\n"
-            f"Rate the relative likelihood (0.0 to 10.0) of each option being the single correct choice.\n"
-            f"Output ONLY a valid JSON object matching this schema:\n"
-            f'{{"scores": {schema}}}'
-        )
-        data = self._chat.complete(content, max_tokens=1024, temperature=0.0, logprobs=False)
-        raw = (data["choices"][0].get("message") or {}).get("content") or ""
-        parsed = json.loads(_strip_code_fence(raw))
-        scores = parsed.get("scores", {})
-        return {opt: float(scores.get(opt, 0.0)) for opt in options}
+    def _readout_once(
+        self, state: dict[str, Any], instructions: str, options: list[str]
+    ) -> tuple[list[float], int]:
+        """One lettering: raw letter log-probabilities aligned with `options`, plus prompt tokens."""
+        letters = [LETTERS[i] for i in range(len(options))]
+        content = build_prompt(state, instructions, options)
+        try:
+            top, tokens = self.client.top_logprobs(content)
+        except BionicError as exc:
+            raise DecisionError(str(exc)) from exc
+        raw = letter_scores(top, letters)
+        vals: list[float] = []
+        for letter, v in zip(letters, raw, strict=True):
+            if v is None:
+                raise OpenJevReadoutError(f"letter {letter} absent from the model readout")
+            vals.append(v)
+        return vals, tokens
 
     # -- decision assembly --------------------------------------------------
 
     def _to_choice(
-        self, logits: dict[str, float], options: list[str], allow_abstain: bool
+        self, probs: list[float], options: list[str], allow_abstain: bool, raw: dict[str, float]
     ) -> ChoiceDecision:
-        probabilities = self.calibrator.calibrate(logits)
-        best = max(probabilities, key=lambda option: probabilities[option])
-        confidence = probabilities[best]
+        best = max(range(len(probs)), key=lambda i: probs[i])
+        confidence = choice_confidence(probs)
         effective_threshold = _effective_threshold(len(options), self.config.threshold)
-        abstained = (allow_abstain and best == "UNKNOWN") or confidence < effective_threshold
-        value = "UNKNOWN" if abstained else best
-        tentative = best if (abstained and best != "UNKNOWN") else None
+        abstained = allow_abstain and confidence < effective_threshold
+        value = "UNKNOWN" if abstained else options[best]
+        tentative = options[best] if abstained else None
         return ChoiceDecision(
             value=value,
-            probabilities=probabilities,
-            confidence=confidence,
+            probabilities={o: p for o, p in zip(options, probs, strict=True)},
+            confidence=round(confidence, 4),
             abstained=abstained,
             tentative_value=tentative,
-            raw_logits=logits,
+            raw_logits={k: round(v, 6) for k, v in raw.items()},
         )
 
-    @staticmethod
-    def _from_legacy(decision: _OpenJevChoiceDecision) -> ChoiceDecision:
-        """Re-wrap a stock-client decision so this package's schema contract holds.
 
-        The stock openjevpro client returns its own `ChoiceDecision`, which has no
-        `tentative_value`. Passing it through untouched would make the abstention
-        contract — and the shape of the serialized decision — depend on which
-        backend is configured, so the ollama/legacy paths would silently drop a
-        field the chat path always reports.
-        """
-        probabilities = decision.probabilities
-        raw_argmax = max(probabilities, key=lambda option: probabilities[option], default=None)
-        value, tentative = decision.value, None
-        if decision.abstained:
-            if value != "UNKNOWN":
-                tentative, value = value, "UNKNOWN"
-            elif raw_argmax not in (None, "UNKNOWN"):
-                tentative = raw_argmax
-        return ChoiceDecision(
-            value=value,
-            probabilities=probabilities,
-            confidence=decision.confidence,
-            abstained=decision.abstained,
-            tentative_value=tentative,
-            raw_logits=decision.raw_logits,
-        )
-
-    @property
-    def _chat(self) -> _ChatCompleter:
-        completer = getattr(self, "_completer", None)
-        if completer is None:
-            completer = _ChatCompleter(self.config)
-            object.__setattr__(self, "_completer", completer)
-        return completer
+def _criteria_text(criteria: Criteria) -> str:
+    if isinstance(criteria, dict):
+        return "\n".join(f"- {k}: {v}" for k, v in criteria.items())
+    return str(criteria).strip()
 
 
 __all__ = [
     "DecisionClient",
     "DecisionError",
     "InvalidTierError",
-    "NoLogprobsError",
+    "OpenJevReadoutError",
     "TooManyOptionsError",
 ]

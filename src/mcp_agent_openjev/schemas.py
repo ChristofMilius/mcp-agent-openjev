@@ -1,34 +1,48 @@
 """Decision schemas.
 
-Two gaps in OpenJev's PyPI 0.1.0 schemas are closed by local subclasses, so
-pydantic does not silently drop the fields the abstention and score contracts
-depend on:
+Standalone pydantic models for the three decision types. Two fields the abstention
+and score contracts depend on are declared explicitly so the shape never depends on
+a third-party package:
 
-* ``ChoiceDecision`` omits ``tentative_value``, which its documented
-  abstention contract requires (present in the upstream repo's main branch).
-* ``ScoreDecision`` reports ``expected_score`` without saying which scale it
-  was computed on, leaving the reader to infer the tier weights.
+* ``ChoiceDecision.tentative_value`` -- the raw argmax kept aside when the decision
+  abstains to UNKNOWN.
+* ``ScoreDecision.tier_weights`` -- the scale ``expected_score`` was computed on.
 """
 
 from __future__ import annotations
 
-from openjevpro.schemas import ChoiceDecision as _OpenJevChoiceDecision
-from openjevpro.schemas import NoulDecision
-from openjevpro.schemas import ScoreDecision as _OpenJevScoreDecision
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 __all__ = ["ChoiceDecision", "NoulDecision", "ScoreDecision"]
 
 
-class ChoiceDecision(_OpenJevChoiceDecision):
+class ChoiceDecision(BaseModel):
     """Categorical decision; value normalizes to UNKNOWN when abstained."""
 
-    tentative_value: str | None = None
+    value: str = Field(description="Chosen option, or UNKNOWN when abstained")
+    probabilities: dict[str, float] = Field(default_factory=dict, description="Option -> calibrated probability")
+    confidence: float = Field(description="Calibrated probability of the winning option")
+    abstained: bool = Field(description="True when the winner fell below the abstention threshold")
+    tentative_value: str | None = Field(
+        default=None, description="Raw argmax kept aside when abstained to UNKNOWN, else None"
+    )
+    raw_logits: dict[str, float] = Field(default_factory=dict, description="Option -> raw log-probability")
 
 
-class ScoreDecision(_OpenJevScoreDecision):
+class NoulDecision(BaseModel):
+    """Binary truth judgment."""
+
+    value: bool = Field(description="TRUE or FALSE for the assertion")
+    probability_true: float = Field(description="Calibrated P(TRUE)")
+    confidence: float = Field(description="max(P(true), 1 - P(true))")
+    abstained: bool = Field(description="True when the judgment fell below the abstention threshold")
+
+
+class ScoreDecision(BaseModel):
     """Ordinal decision carrying the scale its expected score was computed on."""
 
+    expected_score: float = Field(description="Probability-weighted expected tier index")
+    level_probabilities: dict[str, float] = Field(default_factory=dict, description="Tier label -> probability")
     tier_weights: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -37,3 +51,5 @@ class ScoreDecision(_OpenJevScoreDecision):
             "recomputed from level_probabilities."
         ),
     )
+    confidence: float = Field(description="Spread of the distribution away from its mode")
+    abstained: bool = Field(description="True when the decision fell below the abstention threshold")

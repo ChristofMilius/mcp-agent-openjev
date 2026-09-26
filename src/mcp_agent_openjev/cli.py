@@ -39,11 +39,10 @@ def _cmd_doctor(args) -> int:
 
     print(f"  base_url  : {cfg.base_url}")
     print(f"  model     : {cfg.model}")
-    print(f"  backend   : {cfg.backend}  -> resolved {cfg.resolve_backend()}")
-    print(f"  method    : {cfg.method}")
+    print("  endpoint  : openresponses (/v1/responses)")
     print(f"  temperature: {cfg.temperature}")
+    print(f"  perms     : {cfg.perms}")
     print(f"  threshold : {cfg.abstain_threshold}")
-    print(f"  reasoning : {'disabled' if cfg.disable_reasoning else 'enabled'}")
 
     import requests
 
@@ -56,8 +55,8 @@ def _cmd_doctor(args) -> int:
     except Exception as exc:
         print(f"\n  endpoint  : unreachable -> {type(exc).__name__}: {exc}")
 
-    client = DecisionClient(cfg)
-    print(f"\n  client    : backend={client.backend}")
+    DecisionClient(cfg)
+    print("\n  client    : openjev over bionic")
     return 0
 
 
@@ -151,8 +150,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="mcp-agent-openjev",
         description=(
-            "Typed probabilistic decisions (Choice/Noul/Score) over OpenJev + a local "
-            "OpenAI-compatible chat endpoint."
+            "Typed probabilistic decisions (Choice/Noul/Score) over OpenJev + Bionic's "
+            "Open Responses endpoint in LM Studio."
         ),
     )
     sub = parser.add_subparsers(dest="command")

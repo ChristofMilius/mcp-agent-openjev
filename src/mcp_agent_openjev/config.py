@@ -1,4 +1,8 @@
-"""Environment-driven configuration for mcp_agent_openjev."""
+"""Environment-driven configuration for mcp_agent_openjev.
+
+The decision path is a single LM Studio-compatible client: the OpenJev prompt goes to Bionic's `/v1/responses` endpoint,
+which is the one LM Studio surface that returns logprobs. The released helper's READOUT_* variables still work.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-DEFAULT_BASE_URL = "http://localhost:1234/v1"
-DEFAULT_MODEL = "google/gemma-4-26b-a4b-qat"
-
-BACKENDS = ("auto", "chat", "ollama", "legacy")
-METHODS = ("auto", "logprobs", "scores")
+DEFAULT_BASE_URL = "http://127.0.0.1:1234"
+DEFAULT_MODEL = "openjev"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -30,15 +31,14 @@ def _env_float(name: str, default: float) -> float:
         raise ValueError(f"{name} must be a number, got {raw!r}") from exc
 
 
-def _env_flag(name: str, default: bool) -> bool:
-    raw = _env(name).strip().lower()
+def _env_int(name: str, default: int) -> int:
+    raw = _env(name)
     if not raw:
         return default
-    if raw in ("1", "true", "yes", "on"):
-        return True
-    if raw in ("0", "false", "no", "off"):
-        return False
-    raise ValueError(f"{name} must be a boolean flag, got {raw!r}")
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
 
 
 def _env_threshold(name: str, default: str) -> str:
@@ -63,72 +63,53 @@ def _load_dotenv() -> None:
 
 @dataclass(frozen=True)
 class Config:
-    """Immutable connection + calibration settings for a DecisionClient."""
+    """Immutable connection + calibration settings for the OpenJev client."""
 
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
     api_key: str = ""
-    backend: str = "auto"
-    method: str = "auto"
-    temperature: float = 1.3
-    abstain_threshold: str = "0.45"
-    disable_reasoning: bool = True
-    timeout: float = 60.0
-    top_logprobs: int = 20
+    timeout: float = 120.0
+    temperature: float = 0.85
+    noul_t: float = 1.829074
+    noul_bias: float = 0.0
+    perms: int = 1
+    abstain_threshold: str = "auto"
 
     @classmethod
     def from_env(cls) -> Config:
         _load_dotenv()
-        backend = _env("JEV_BACKEND", "auto").strip().lower()
-        if backend not in BACKENDS:
-            raise ValueError(f"JEV_BACKEND must be one of {BACKENDS}, got {backend!r}")
-        method = _env("JEV_METHOD", "auto").strip().lower()
-        if method not in METHODS:
-            raise ValueError(f"JEV_METHOD must be one of {METHODS}, got {method!r}")
         api_key = _env("JEV_API_KEY") or _env("LM_STUDIO_API_KEY")
         return cls(
             base_url=_env("JEV_BASE_URL", DEFAULT_BASE_URL).rstrip("/"),
             model=_env("JEV_MODEL", DEFAULT_MODEL).strip(),
             api_key=api_key.strip(),
-            backend=backend,
-            method=method,
-            temperature=_env_float("JEV_TEMPERATURE", 1.3),
-            abstain_threshold=_env_threshold("JEV_ABSTAIN_THRESHOLD", "0.45"),
-            disable_reasoning=_env_flag("JEV_DISABLE_REASONING", True),
-            timeout=_env_float("JEV_TIMEOUT", 60.0),
-            top_logprobs=int(_env_float("JEV_TOP_LOGPROBS", 20.0)),
+            timeout=_env_float("JEV_TIMEOUT", 120.0),
+            temperature=_env_float("JEV_TEMPERATURE", _env_float("READOUT_T", 0.85)),
+            noul_t=_env_float("JEV_NOUL_T", _env_float("READOUT_NOUL_T", 1.829074)),
+            noul_bias=_env_float("JEV_NOUL_BIAS", _env_float("READOUT_NOUL_BIAS", 0.0)),
+            perms=_env_int("JEV_PERMS", _env_int("READOUT_PERMS", 1)),
+            abstain_threshold=_env_threshold("JEV_ABSTAIN_THRESHOLD", "auto"),
         )
-
-    def resolve_backend(self) -> str:
-        """Map the `auto` backend onto a concrete backend name."""
-        if self.backend != "auto":
-            return self.backend
-        return "ollama" if ":11434" in self.base_url else "chat"
 
     def with_overrides(self, **kwargs) -> Config:
         """Return a copy with per-request values applied (None values are ignored)."""
         clean = {k: v for k, v in kwargs.items() if v is not None}
         if "abstain_threshold" in clean:
             clean["abstain_threshold"] = str(clean["abstain_threshold"])
-        if "temperature" in clean:
-            clean["temperature"] = float(clean["temperature"])
-        if "model" in clean:
-            clean["model"] = str(clean["model"])
+        for k in ("temperature", "noul_t", "noul_bias"):
+            if k in clean:
+                clean[k] = float(clean[k])
+        if "perms" in clean:
+            clean["perms"] = int(clean["perms"])
         return replace(self, **clean)
 
     @property
-    def decisions_url(self) -> str:
-        base = self.base_url.rstrip("/")
-        if base.endswith("/chat/completions"):
-            return base
-        return f"{base}/chat/completions"
+    def responses_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}/v1/responses"
 
     @property
     def models_url(self) -> str:
-        base = self.base_url.rstrip("/")
-        if base.endswith("/models"):
-            return base
-        return f"{base}/models"
+        return f"{self.base_url.rstrip('/')}/v1/models"
 
     @property
     def threshold(self) -> float | str:
@@ -136,4 +117,4 @@ class Config:
         return "auto" if self.abstain_threshold == "auto" else float(self.abstain_threshold)
 
 
-__all__ = ["Config", "BACKENDS", "METHODS"]
+__all__ = ["Config"]

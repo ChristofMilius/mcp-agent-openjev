@@ -56,8 +56,7 @@ def create_server(config: Config | None = None) -> MCPServer:
             count = len(resp.json().get("data") or []) if reachable else 0
             info = {
                 "status": "ok" if reachable else "unreachable",
-                "backend": client.backend,
-                "method": cfg.method,
+                "backend": "openresponses",
                 "model": cfg.model,
                 "base_url": cfg.base_url,
                 "endpoint_reachable": reachable,
@@ -66,8 +65,7 @@ def create_server(config: Config | None = None) -> MCPServer:
         except Exception as exc:
             info = {
                 "status": "unreachable",
-                "backend": client.backend,
-                "method": cfg.method,
+                "backend": "openresponses",
                 "model": cfg.model,
                 "base_url": cfg.base_url,
                 "error": f"{type(exc).__name__}: {exc}",

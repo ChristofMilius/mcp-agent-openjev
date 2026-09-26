@@ -77,8 +77,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         return {
             "status": "ok",
             "app": APP_NAME,
-            "backend": client.backend,
-            "method": "scores" if cfg.method == "scores" else f"{cfg.method} (logprobs preferred)",
+            "backend": "openresponses",
+            "method": "logprobs",
             "model": cfg.model,
             "base_url": cfg.base_url,
             "endpoint_reachable": models_reachable,
